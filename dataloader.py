@@ -8,12 +8,7 @@ from torch.utils.data import TensorDataset
 type_dict = {
     'wood': 0,
     'foam': 1,
-    'paper': 2,
-    'stone': 3,
-    'cloth': 4,
-    'copper': 5,
-    'iron': 6,
-    'aluminum': 7
+    'paper': 2
 }
 
 

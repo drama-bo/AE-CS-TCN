@@ -5,8 +5,11 @@ import torch.optim as optim
 import torch.utils.data as data
 from sklearn import metrics
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
-from model import Dynamic_conv1d
+from model import Classifier
 from dataloader import data_myself
+
+
+
 
 # Train
 def train():
@@ -155,13 +158,14 @@ if __name__ == '__main__':
     learning_rate = 0.0001
     num_epochs = 300
 
-    model = Dynamic_conv2d(in_planes=64, out_planes=3, kernel_size=3, ratio=0.25, padding=1, K=8, )
-    # x = x.to('cuda:0')
-    # model.to('cuda')
-    # model.attention.cuda()
-    # nn.Conv3d()
-    model.update_temperature()
+    model = Classifier(input_size=1, output_size=1000)
 
+    # 判断是否需要GPU
+    # use_gpu = torch.cuda.is_available()
+    # if use_gpu:
+    #     model = model.cuda()
+
+    # 定义损失函数和优化器
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -196,3 +200,23 @@ if __name__ == '__main__':
     train()
 
     # test()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

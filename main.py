@@ -11,6 +11,12 @@ from dataloader import data_myself
 
 
 
+
+
+
+
+
+
 # Train
 def train():
     model.train()

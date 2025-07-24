@@ -4,7 +4,10 @@ from torch.nn.utils import weight_norm
 import torch.nn.functional as F
 
 # 定义模型
-# SE模块
+
+
+
+
 
 
 class SEModule(nn.Module):

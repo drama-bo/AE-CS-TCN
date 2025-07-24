@@ -18,8 +18,6 @@ type_dict = {
 
 
 
-
-
 class data_myself(data.Dataset):
     def __init__(self, data_folder='', set='train_data'):
         self.data_path = os.path.join(data_folder, set)

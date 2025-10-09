@@ -28,7 +28,7 @@ class SEModule(nn.Module):
         return input * x
 
 
-class CrossScaleBottleneck(nn.Module):  # 原Res2NetBottleneck
+class CrossScaleBottleneck(nn.Module):
     expansion = 4  # 残差块的输出通道数=输入通道数*expansion
 
     def __init__(self, inplanes, planes, downsample=None, stride=1, scales=4, groups=1, se=True,  norm_layer=True):
@@ -99,7 +99,7 @@ class CrossScaleBottleneck(nn.Module):  # 原Res2NetBottleneck
         return out
 
 
-class CrossScaleBlock(nn.Module):  # 原Res2Net
+class CrossScaleBlock(nn.Module):
     def __init__(self, layers, num_classes, width=16, scales=4, groups=1,
                  zero_init_residual=True, se=True, norm_layer=True):
         super(CrossScaleBlock, self).__init__()
@@ -282,7 +282,7 @@ class TCN(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self, input_size, output_size=8):  # 修改为8分类
+    def __init__(self, input_size, output_size=8):  # 为8分类
         super(Classifier, self).__init__()
 
         # 调整卷积层以适应[1,1400]输入
@@ -294,13 +294,13 @@ class Classifier(nn.Module):
                                  scales=4, groups=1, zero_init_residual=True, se=True, norm_layer=True)
         self.tcn_1 = TCN(input_size=1, output_size=8, num_channels=[  # 输出8分类
                          1, 2, 4, 8], kernel_size=5, dropout=0.5)
-        self.cross_scale_2 = CrossScaleBlock([2, 2, 2, 2], num_classes=8, width=16,  # 替换为CrossScaleBlock
+        self.cross_scale_2 = CrossScaleBlock([2, 2, 2, 2], num_classes=8, width=16,
                                  scales=4, groups=1, zero_init_residual=True, se=True, norm_layer=True)
         self.tcn_2 = TCN(input_size=1, output_size=8, num_channels=[  # 输出8分类
                          1, 2, 4, 8], kernel_size=3, dropout=0.5)
 
         self.multihead_crossatttion = nn.MultiheadAttention(
-            embed_dim=16, num_heads=4, batch_first=True)  # 8+8=16维度
+            embed_dim=16, num_heads=4, batch_first=True)
 
         self.fc = nn.Linear(in_features=32, out_features=8)  # 最终输出8分类
 

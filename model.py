@@ -5,14 +5,6 @@ import torch.nn.functional as F
 
 # 定义模型
 
-
-
-
-
-
-
-
-
 class SEModule(nn.Module):
     def __init__(self, channels, reduction=16):
         super(SEModule, self).__init__()
@@ -36,14 +28,14 @@ class SEModule(nn.Module):
         return input * x
 
 
-class Res2NetBottleneck(nn.Module):
+class CrossScaleBottleneck(nn.Module):  # 原Res2NetBottleneck
     expansion = 4  # 残差块的输出通道数=输入通道数*expansion
 
     def __init__(self, inplanes, planes, downsample=None, stride=1, scales=4, groups=1, se=True,  norm_layer=True):
         # scales为残差块中使用分层的特征组数，groups表示其中3*3卷积层数量，SE模块和BN层
-        super(Res2NetBottleneck, self).__init__()
+        super(CrossScaleBottleneck, self).__init__()
 
-        if planes % scales != 0:  # 输出通道数为4的倍数
+        if planes % scales != 0:  # 输出通道数为scales的倍数
             raise ValueError('Planes must be divisible by scales')
         if norm_layer:  # BN层
             norm_layer = nn.BatchNorm2d
@@ -56,7 +48,7 @@ class Res2NetBottleneck(nn.Module):
         self.conv1 = nn.Conv2d(inplanes, bottleneck_planes,
                                kernel_size=1, stride=stride)
         self.bn1 = norm_layer(bottleneck_planes)
-        # 3*3的卷积层，一共有3个卷积层和3个BN层
+        # 3*3的卷积层，一共有scales-1个卷积层和BN层
         self.conv2 = nn.ModuleList([nn.Conv2d(bottleneck_planes // scales, bottleneck_planes // scales,
                                               kernel_size=3, stride=1, padding=1, groups=groups) for _ in range(scales-1)])
         self.bn2 = nn.ModuleList(
@@ -107,17 +99,16 @@ class Res2NetBottleneck(nn.Module):
         return out
 
 
-class Res2Net(nn.Module):
+class CrossScaleBlock(nn.Module):  # 原Res2Net
     def __init__(self, layers, num_classes, width=16, scales=4, groups=1,
                  zero_init_residual=True, se=True, norm_layer=True):
-        super(Res2Net, self).__init__()
+        super(CrossScaleBlock, self).__init__()
         if norm_layer:  # BN层
             norm_layer = nn.BatchNorm2d
         # 通道数分别为64,128,256,512
         planes = [int(width * scales * 2 ** i) for i in range(4)]
         self.inplanes = planes[0]
-        # self.conv1 = nn.Conv2d()
-        # 7*7的卷积层，3*3的最大池化层
+        # 调整输入卷积层以适应[1,1400]输入（先转为2D格式处理）
         self.conv1 = nn.Conv2d(1, planes[0], kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(planes[0])
@@ -125,17 +116,17 @@ class Res2Net(nn.Module):
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         # 四个残差块
         self.layer1 = self._make_layer(
-            Res2NetBottleneck, planes[0], layers[0], stride=1, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
+            CrossScaleBottleneck, planes[0], layers[0], stride=1, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
         self.layer2 = self._make_layer(
-            Res2NetBottleneck, planes[1], layers[1], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
+            CrossScaleBottleneck, planes[1], layers[1], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
         self.layer3 = self._make_layer(
-            Res2NetBottleneck, planes[2], layers[2], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
+            CrossScaleBottleneck, planes[2], layers[2], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
         self.layer4 = self._make_layer(
-            Res2NetBottleneck, planes[3], layers[3], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
+            CrossScaleBottleneck, planes[3], layers[3], stride=2, scales=scales, groups=groups, se=se, norm_layer=norm_layer)
         # 自适应平均池化，全连接层
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(
-            planes[3] * Res2NetBottleneck.expansion, num_classes)
+            planes[3] * CrossScaleBottleneck.expansion, num_classes)
 
         # 初始化
         for m in self.modules():
@@ -145,10 +136,10 @@ class Res2Net(nn.Module):
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-        # 零初始化每个剩余分支中的最后一个BN，以便剩余分支从零开始，并且每个剩余块的行为类似于一个恒等式
+        # 零初始化每个剩余分支中的最后一个BN
         if zero_init_residual:
             for m in self.modules():
-                if isinstance(m, Res2NetBottleneck):
+                if isinstance(m, CrossScaleBottleneck):
                     nn.init.constant_(m.bn3.weight, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1, scales=4, groups=1, se=True, norm_layer=True):
@@ -174,26 +165,19 @@ class Res2Net(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # print(x.shape)
         x = self.conv1(x)
-        # print(x.shape)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        # print(x.shape)
         x = self.layer2(x)
-        # print(x.shape)
         x = self.layer3(x)
-        # print(x.shape)
         x = self.layer4(x)
-        # print(x.shape)
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         logits = self.fc(x)
-        # print(x.shape)
         probas = nn.functional.softmax(logits, dim=1)
 
         return probas
@@ -214,15 +198,11 @@ class SpatialAttention(nn.Module):
         # 经过卷积提取空间注意力权重
         x = torch.cat([max_out, avg_out], dim=1)
         out = self.conv1(x)
-        # print('att')
-        # print(out.shape)
-        # 输出非负
         out = self.sigmoid(out)
         return out
 
+
 # 裁剪时域卷积模块多余的pad
-
-
 class Chomp1d(nn.Module):
     def __init__(self, chomp_size):
         super(Chomp1d, self).__init__()
@@ -295,79 +275,61 @@ class TCN(nn.Module):
     def forward(self, inputs):
         """Inputs have to have dimension (N, C_in, L_in)"""
         inputs = inputs.squeeze(-1)
-        # print('input')
-        # print(inputs.shape)
-        # import pdb
-        # pdb.set_trace()
-
         y1 = self.tcn(inputs)  # input should have dimension (N, C, L)
-        # print('y1')
-        # print(y1.shape)
-        # y1 = self.self_attention(y1)
         o = self.linear(y1[:, :, -1])
-        # print(o.shape)
         o = F.log_softmax(o, dim=1)
-        # print('o1')
-        # print(o.shape)
         return o
 
 
 class Classifier(nn.Module):
-    def __init__(self, input_size, output_size):
+    def __init__(self, input_size, output_size=8):  # 修改为8分类
         super(Classifier, self).__init__()
 
+        # 调整卷积层以适应[1,1400]输入
         self.conv1 = nn.Conv2d(in_channels=input_size, out_channels=64,
                                kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)
         self.spatial = SpatialAttention()
-        self.res2net_1 = Res2Net([2, 2, 2, 2], num_classes=1000, width=16,
+        # 替换为CrossScaleBlock，输出8分类
+        self.cross_scale_1 = CrossScaleBlock([2, 2, 2, 2], num_classes=8, width=16,
                                  scales=4, groups=1, zero_init_residual=True, se=True, norm_layer=True)
-        self.tcn_1 = TCN(input_size=1, output_size=1000, num_channels=[
+        self.tcn_1 = TCN(input_size=1, output_size=8, num_channels=[  # 输出8分类
                          1, 2, 4, 8], kernel_size=5, dropout=0.5)
-        self.res2net_2 = Res2Net([2, 2, 2, 2], num_classes=1000, width=16,
+        self.cross_scale_2 = CrossScaleBlock([2, 2, 2, 2], num_classes=8, width=16,  # 替换为CrossScaleBlock
                                  scales=4, groups=1, zero_init_residual=True, se=True, norm_layer=True)
-        self.tcn_2 = TCN(input_size=1, output_size=1000, num_channels=[
+        self.tcn_2 = TCN(input_size=1, output_size=8, num_channels=[  # 输出8分类
                          1, 2, 4, 8], kernel_size=3, dropout=0.5)
-        # sel_att = nn.MultiheadAttention()
 
         self.multihead_crossatttion = nn.MultiheadAttention(
-            embed_dim=2000, num_heads=4, batch_first=True)
+            embed_dim=16, num_heads=4, batch_first=True)  # 8+8=16维度
 
-        self.fc = nn.Linear(in_features=4000, out_features=3)
+        self.fc = nn.Linear(in_features=32, out_features=8)  # 最终输出8分类
 
     def forward(self, x):
-        x = x.unsqueeze(-1).unsqueeze(1)
+        # 处理[1,1400]输入：添加维度变为(N,1,1,1400)以适应2D卷积
+        x = x.view(x.size(0), 1, 1, -1)  # 适应[1,1400]输入形状
         out = self.conv1(x)
-        out = self.spatial(out)
-        tcn_out_1 = self.tcn_1(out)
-        res2net_out_1 = self.res2net_1(out)
+        out = self.spatial(out) * out  # 应用空间注意力
 
-        # print('tcn')
-        # print(tcn_out_1.shape)
-        # print("res")
-        # print(res2net_out_1.shape)
+        # 调整维度以适应TCN和CrossScaleBlock
+        tcn_in = out.squeeze(1)  # TCN需要3D输入(N,C,L)
+        tcn_out_1 = self.tcn_1(tcn_in)
+        cross_scale_out_1 = self.cross_scale_1(out)
 
-        tcn_out_2 = self.tcn_2(out)
-        res2net_out_2 = self.res2net_2(out)
-        out_1 = torch.cat([res2net_out_1, tcn_out_1], dim=1)
-        out_2 = torch.cat([res2net_out_2, tcn_out_2], dim=1)
-        # print("out1")
-        # print(out_1.shape)
-        # print("out2")
-        # print(out_2.shape)
+        tcn_out_2 = self.tcn_2(tcn_in)
+        cross_scale_out_2 = self.cross_scale_2(out)
 
+        # 特征拼接
+        out_1 = torch.cat([cross_scale_out_1, tcn_out_1], dim=1)
+        out_2 = torch.cat([cross_scale_out_2, tcn_out_2], dim=1)
+
+        # 多头注意力
         out_layer_1, _ = self.multihead_crossatttion(torch.unsqueeze(
             out_2, dim=1), torch.unsqueeze(out_2, dim=1), torch.unsqueeze(out_1, dim=1))
         out_layer_2, _ = self.multihead_crossatttion(torch.unsqueeze(
             out_1, dim=1), torch.unsqueeze(out_1, dim=1), torch.unsqueeze(out_2, dim=1))
 
-        # out = torch.concat(out_1,out_2)
-        # print('out——1')
-        # print(out_layer_1.shape)
-        # print('out——2')
-        # print(out_layer_2.shape)
-
-        out = torch.concat([out_layer_1, out_layer_1], dim=2)
-
+        # 特征融合与分类
+        out = torch.cat([out_layer_1, out_layer_2], dim=2).squeeze(1)
         out = self.fc(out)
 
         return out

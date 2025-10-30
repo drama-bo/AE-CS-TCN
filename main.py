@@ -20,35 +20,35 @@ def train():
         total_correct = 0
         total_samples = 0
         for id, sample in enumerate(train_data_loader):
-            echo_data = sample['data']  # 输入形状应为[batch_size, 1, 1400]
+            echo_data = sample['data']  # The input shape should be [batch_size, 1, 1400]
             echo_label = sample['label']
 
-            # 前向传播
+            # forward propagation
             outputs = model(echo_data).squeeze()
-            # 归一化
+            # normalization
             mean_out = torch.mean(outputs)
             std_out = torch.std(outputs)
             outputs = (outputs-mean_out) / std_out
-            # labels 数据类型转换
+            # Labels data type conversion
             echo_label = echo_label.long()
             # 计算loss
             loss = criterion(outputs, echo_label)
-            # 反向传播和优化
+            # Backpropagation and optimization
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            # epoch 指标 计算
+            # Calculation of epoch indicators
             running_loss += loss.item()
             _, predicted = outputs.max(1)
             total_samples += echo_label.size(0)
             total_correct += predicted.eq(echo_label).sum().item()
 
-        # epoch 信息保存以及存储
+        # Epoch information storage and preservation
         epoch_loss = running_loss / len(train_data_loader)
         epoch_acc = total_correct / total_samples
         print('Train Epoch: {} Loss: {:.4f} Accuracy: {:.4f}'.format(epoch, epoch_loss, epoch_acc))
-        # 保存训练信息
+        # Save training information
         with open("train_log.txt", 'a') as f:
             f.write('Epoch: {} Loss: {:.4f} Accuracy: {:.4f}\n'.format(epoch, epoch_loss, epoch_acc))
 

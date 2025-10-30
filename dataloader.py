@@ -24,7 +24,7 @@ class data_myself(data.Dataset):
         self.data_list, self.label_list = self.anno()
 
     def anno(self):
-        # 创建空的数据列表和标签列表
+        # Create an empty data list and label list
         data_list = torch.tensor([])
         label_list = torch.tensor([])
 
@@ -34,10 +34,10 @@ class data_myself(data.Dataset):
 
             mat_data = sio.loadmat(mat_file)['ori_data']
 
-            # 转置数据，因为源数据是按照列来读取的
+            # Transpose data, because the source data is read by column
             tensor_data = torch.tensor(mat_data, dtype=torch.float32).t()
 
-            # 创建一个等于tensor_data 长度的tensor，然后全部按照你设置好的list赋值
+            # Create a tensor equal to the length of tensor_data, and assign all values according to the list you have set
             temp_label_list = torch.empty(tensor_data.shape[0])
             type = mat_path.split('_')[1]
             temp_label_list[:] = type_dict[type]
@@ -52,7 +52,7 @@ class data_myself(data.Dataset):
         return data_list, label_list
 
     def __getitem__(self, index):
-        # 逐个加载和转换.mat文件
+        # Load and convert. mat files one by one
 
         data_return = self.data_list[index]
         label_return = self.label_list[index]
